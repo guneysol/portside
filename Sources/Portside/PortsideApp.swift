@@ -67,23 +67,27 @@ enum Debug {
     @MainActor
     static func run(_ args: [String]) async {
         if args.contains("--bench") {
+            // Off the main thread, like Store.refresh: there, Process.waitUntilExit (netstat)
+            // is ~30x slower and autoreleased objects are never drained.
             let scanner = Scanner()
             for foreign in [false, true] {
-                _ = scanner.scan(includeForeign: foreign) // warm up
                 let clock = ContinuousClock(), n = 50
-                let t = clock.measure { for _ in 0..<n { _ = scanner.scan(includeForeign: foreign) } }
-                print("scan(includeForeign: \(foreign)): \(t / n) per scan")
+                _ = await Task.detached { scanner.scan(includeForeign: foreign) }.value // warm up
+                let start = clock.now
+                for _ in 0..<n { _ = await Task.detached { scanner.scan(includeForeign: foreign) }.value }
+                print("scan(includeForeign: \(foreign)): \((clock.now - start) / n) per scan")
             }
             exit(0)
         }
-        let procs = Scanner().scan(includeForeign: true)
+        let procs = Scanner().scan(includeForeign: true), scanned = Date()
         if let i = args.firstIndex(of: "--stop"), i + 1 < args.count, let pid = Int32(args[i + 1]),
            let p = procs.first(where: { $0.pid == pid }) {
-            await Task.detached { Terminator.stop(p, force: false) }.value
+            await Terminator.stop(p, force: false, asOf: scanned)
             print("stopped \(pid) (tree \(p.tree.sorted()))")
         } else {
             for p in procs.sorted(by: { $0.pid < $1.pid }) {
-                print("\(p.pid)\t\(p.isOwned ? "" : "root ")\(p.isSystem ? "sys" : "dev")\t\(p.name)\t\(p.ports.map(\.number))\t\(p.project?.name ?? "-")\t\(p.summary)\t\(p.origin ?? "-")\ttree=\(p.tree.sorted())")
+                let project = p.project.map { "\($0.name)\($0.isWorktree ? " (worktree)" : "")@\($0.branch ?? "-")" } ?? "-"
+                print("\(p.pid)\t\(p.isOwned ? "" : "root ")\(p.isSystem ? "sys" : "dev")\t\(p.name)\t\(p.ports.map(\.number))\t\(project)\t\(p.summary)\t\(p.origin ?? "-")\ttree=\(p.tree)")
             }
         }
         exit(0)

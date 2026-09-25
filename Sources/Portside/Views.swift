@@ -174,12 +174,16 @@ private struct ProcessRow: View {
     }
 
     /// The command truncates first; who started it and for how long stay readable.
+    /// Scans that change nothing don't redraw, so the uptime ticks on its own, once a minute.
     private var detail: some View {
-        let tail = [process.origin, Format.uptime(Date().timeIntervalSince(process.started))]
-            .compactMap { $0 }.joined(separator: " · ")
-        return HStack(spacing: 0) {
+        HStack(spacing: 0) {
             Text(process.summary).lineLimit(1).truncationMode(.middle)
-            Text(verbatim: " · " + tail).lineLimit(1).fixedSize().layoutPriority(1)
+            TimelineView(.periodic(from: process.started, by: 60)) { context in
+                let tail = [process.origin, Format.uptime(context.date.timeIntervalSince(process.started))]
+                    .compactMap { $0 }.joined(separator: " · ")
+                Text(verbatim: " · " + tail).lineLimit(1).fixedSize()
+            }
+            .layoutPriority(1)
         }
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
@@ -296,7 +300,8 @@ private struct Footer: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            let stoppable = store.visible.filter(\.isOwned)
+            // Never system or app listeners (AirPlay, Spotify…), even while they're shown.
+            let stoppable = store.visible.filter { $0.isOwned && !$0.isSystem }
             if confirming {
                 Text(stoppable.count == 1 ? "Stop 1 process?" : "Stop \(stoppable.count) processes?")
                     .foregroundStyle(.primary)
