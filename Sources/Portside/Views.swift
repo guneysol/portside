@@ -60,7 +60,6 @@ private struct EmptyState: View {
 private struct GroupSection: View {
     let group: ProcessGroup
     let store: Store
-    @State private var hovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
@@ -77,12 +76,6 @@ private struct GroupSection: View {
                         .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
-                if hovering, group.processes.filter(\.isOwned).count > 1 {
-                    Button("Stop all") { store.stop(group.processes.filter(\.isOwned)) }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(.red.opacity(0.9))
-                }
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 8)
@@ -91,10 +84,6 @@ private struct GroupSection: View {
 
             ForEach(group.processes) { ProcessRow(process: $0, store: store) }
         }
-        // Without this, the empty gap before "Stop all" isn't part of the hover
-        // area, so the button vanished while the pointer crossed it.
-        .contentShape(Rectangle())
-        .onHover { hovering = $0 }
     }
 }
 
@@ -236,20 +225,20 @@ private struct Footer: View {
     @State private var confirming = false
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 2) {
             let stoppable = store.visible.filter(\.isOwned)
             if confirming {
                 Text("Stop all \(stoppable.count)?")
                     .foregroundStyle(.primary)
+                    .padding(.leading, 6)
                 Button("Cancel") { confirming = false }
-                    .buttonStyle(.plain)
+                    .buttonStyle(FooterButtonStyle())
                 Button("Stop") {
                     store.stop(stoppable)
                     confirming = false
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(FooterButtonStyle(tint: .red))
                 .fontWeight(.semibold)
-                .foregroundStyle(.red)
             } else if !stoppable.isEmpty {
                 Button {
                     confirming = true
@@ -257,12 +246,13 @@ private struct Footer: View {
                 } label: {
                     Label("Stop All", systemImage: "stop.circle")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(FooterButtonStyle())
                 .help("Stop every process listed here")
             }
             Spacer()
             if store.hiddenCount > 0, !store.showSystem {
                 Text("\(store.hiddenCount) hidden")
+                    .padding(.trailing, 4)
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
                     .help("System daemons and GUI apps — show them from the ⋯ menu")
@@ -270,7 +260,7 @@ private struct Footer: View {
             Button { Task { await store.refresh() } } label: {
                 Image(systemName: "arrow.clockwise")
             }
-            .buttonStyle(.plain)
+            .buttonStyle(FooterButtonStyle())
             .help("Refresh")
 
             Menu {
@@ -287,11 +277,39 @@ private struct Footer: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
+            .modifier(HoverChrome())
         }
         .font(.system(size: 12))
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 8) // controls carry their own padding for the hover highlight
+        .padding(.vertical, 5)
+    }
+}
+
+/// Subtle rounded highlight on hover, a little stronger while pressed.
+private struct HoverChrome: ViewModifier {
+    var tint: Color?
+    var pressed = false
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .foregroundStyle(tint ?? (hovering ? Color.primary : Color.secondary))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background((tint ?? .primary).opacity(pressed ? 0.16 : hovering ? 0.08 : 0),
+                        in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .contentShape(Rectangle())
+            .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+}
+
+private struct FooterButtonStyle: ButtonStyle {
+    var tint: Color?
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.modifier(HoverChrome(tint: tint, pressed: configuration.isPressed))
     }
 }
 
