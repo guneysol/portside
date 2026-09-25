@@ -1,5 +1,4 @@
 import AppKit
-import ServiceManagement
 import SwiftUI
 
 struct MenuContent: View {
@@ -340,8 +339,8 @@ private struct Footer: View {
                    ? "Show System & App Listeners (\(store.hiddenCount))" : "Show System & App Listeners",
                    isOn: $store.showSystem)
             Toggle("Launch at Login", isOn: Binding(
-                get: { SMAppService.mainApp.status == .enabled },
-                set: { try? $0 ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }
+                get: { store.launchAtLogin },
+                set: { store.setLaunchAtLogin($0) }
             ))
             Divider()
             Button("Quit Portside") { NSApp.terminate(nil) }

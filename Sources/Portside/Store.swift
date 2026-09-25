@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import ServiceManagement
 
 @MainActor @Observable
 final class Store {
@@ -9,6 +10,16 @@ final class Store {
     private(set) var stopping: Set<Int32> = []
     var showSystem = UserDefaults.standard.bool(forKey: "showSystem") {
         didSet { UserDefaults.standard.set(showSystem, forKey: "showSystem") }
+    }
+
+    /// Mirrors SMAppService, which SwiftUI can't observe, so the checkmark
+    /// updates the moment it's toggled. Re-read on open in case it was changed
+    /// in System Settings.
+    private(set) var launchAtLogin = SMAppService.mainApp.status == .enabled
+
+    func setLaunchAtLogin(_ on: Bool) {
+        try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister()
+        launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
     @ObservationIgnored private let scanner = Scanner()
@@ -40,6 +51,7 @@ final class Store {
         center.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { _ in
             MainActor.assumeIsolated {
                 Store.shared.isOpen = true
+                Store.shared.launchAtLogin = SMAppService.mainApp.status == .enabled
                 Task { await Store.shared.refresh() }
             }
         }
