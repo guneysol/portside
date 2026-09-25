@@ -83,3 +83,14 @@ enum Format {
         return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 }
+
+extension StringProtocol {
+    /// "/usr/bin/node" → "node". Avoids bridging to NSString: this runs for
+    /// every command-line token on every scan.
+    var basename: SubSequence {
+        var end = endIndex
+        while end > startIndex, self[index(before: end)] == "/" { end = index(before: end) }
+        let start = self[..<end].lastIndex(of: "/").map(index(after:)) ?? startIndex
+        return self[start..<end]
+    }
+}

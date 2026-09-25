@@ -76,7 +76,5 @@ enum Classifier {
         return exe.hasPrefix("python") ? "Python" : nil // python3, python3.12…
     }
 
-    private static func basename<S: StringProtocol>(_ s: S) -> String {
-        (String(s) as NSString).lastPathComponent
-    }
+    private static func basename<S: StringProtocol>(_ s: S) -> String { String(s.basename) }
 }

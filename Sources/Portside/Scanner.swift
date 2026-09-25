@@ -5,8 +5,11 @@ import Foundation
 /// project, origin and the process tree needed to stop it cleanly.
 ///
 /// Everything is read in-process from the kernel (sysctl + libproc) — no
-/// `lsof`/`ps` subprocesses — so a scan costs a few milliseconds.
-final class Scanner {
+/// `lsof`/`ps` subprocesses — so a scan costs about a millisecond.
+///
+/// Not thread-safe (it reuses buffers and caches between scans); `Store.refresh`
+/// guarantees scans never overlap, which is what makes the unchecked Sendable sound.
+final class Scanner: @unchecked Sendable {
     private struct Proc {
         let pid: Int32
         let ppid: Int32
@@ -16,25 +19,32 @@ final class Scanner {
     }
 
     private let uid = getuid()
-    private var projectCache: [String: Project?] = [:]
-    private var labelCache: [Int32: String?] = [:]
+    /// launchd label per pid (nil = not a launchd job), valid while the start time matches.
+    private var labelCache: [Int32: (started: Date, label: String?)] = [:]
     private var argsBuffer = [UInt8](repeating: 0, count: Scanner.argMax)
+    private var fdBuffer = [proc_fdinfo](repeating: proc_fdinfo(), count: 256)
 
-    // Per-scan memo, cleared at the start of every scan.
-    private var argsMemo: [Int32: String] = [:]
-    private var exeMemo: [Int32: String] = [:]
+    /// Per-scan lookups, reset at the start of every scan: listeners share
+    /// ancestors (the same shell, terminal, agent), so each is inspected once.
+    private struct Memo {
+        var args: [Int32: String] = [:]
+        var exe: [Int32: String] = [:]
+        var boundary: [Int32: Bool] = [:]
+        var origin: [Int32: String?] = [:]
+        var project: [String: Project] = [:] // per scan, so branch switches show up
+    }
+    private var memo = Memo()
 
     /// - Parameter includeForeign: also report listeners owned by other users
     ///   (root daemons…). Costs one `netstat` spawn, so it only runs while the
     ///   popover is open.
     func scan(includeForeign: Bool) -> [DevProcess] {
-        argsMemo.removeAll(keepingCapacity: true)
-        exeMemo.removeAll(keepingCapacity: true)
+        memo = Memo()
 
         let procs = Self.processTable()
         var listening: [Int32: [ListenPort]] = [:]
         for p in procs.values where p.uid == uid {
-            let ports = Self.listeningPorts(p.pid)
+            let ports = listeningPorts(p.pid)
             if !ports.isEmpty { listening[p.pid] = ports }
         }
         if includeForeign {
@@ -49,19 +59,28 @@ final class Scanner {
         var children: [Int32: [Int32]] = [:]
         for p in procs.values { children[p.ppid, default: []].append(p.pid) }
 
+        // Memoized: sibling listeners climb through the same ancestors.
+        var treeMemo: [Int32: Set<Int32>] = [:]
         func descendants(_ pid: Int32) -> Set<Int32> {
+            if let memo = treeMemo[pid] { return memo }
             var out: Set<Int32> = [pid], stack = [pid]
             while let next = stack.popLast() {
                 for c in children[next] ?? [] where out.insert(c).inserted { stack.append(c) }
             }
+            treeMemo[pid] = out
             return out
         }
 
         let listeningPids = Set(listening.keys)
-        labelCache = labelCache.filter { procs[$0.key] != nil }
-        if listening.keys.contains(where: { procs[$0]?.ppid == 1 && labelCache[$0] == nil }) {
+        // Never in a stop tree: this app and whatever launched it (`Portside --stop` from a shell).
+        var protected: Set<Int32> = []
+        var ancestor = procs[getpid()]
+        while let a = ancestor, a.pid > 1, protected.insert(a.pid).inserted { ancestor = procs[a.ppid] }
+        labelCache = labelCache.filter { procs[$0.key]?.started == $0.value.started }
+        let daemons = listening.keys.compactMap { procs[$0] }.filter { $0.ppid == 1 }
+        if daemons.contains(where: { labelCache[$0.pid] == nil }) {
             let labels = Self.launchdLabels()
-            for pid in listening.keys where procs[pid]?.ppid == 1 { labelCache[pid] = labels[pid] }
+            for p in daemons { labelCache[p.pid] = (p.started, labels[p.pid]) }
         }
 
         return listening.compactMap { pid, ports -> DevProcess? in
@@ -77,7 +96,7 @@ final class Scanner {
             while owned, let parent = procs[chain.last!.ppid], parent.pid > 1, parent.uid == uid,
                   !isBoundary(parent) {
                 let parentTree = descendants(parent.pid)
-                guard parentTree.intersection(listeningPids) == rootTree.intersection(listeningPids) else { break }
+                guard !listeningPids.contains(where: { parentTree.contains($0) && !rootTree.contains($0) }) else { break }
                 chain.append(parent)
                 rootTree = parentTree
             }
@@ -85,7 +104,7 @@ final class Scanner {
             let summarySource = chain.reversed().first { !Self.isShellWrapper(commandLine($0)) } ?? proc
             let (name, kind) = Classifier.describe(command: command, exePath: exe)
             let cwd = owned ? Self.workingDirectory(pid) : ""
-            let label = labelCache[pid] ?? nil
+            let label = labelCache[pid]?.label
 
             return DevProcess(
                 pid: pid,
@@ -99,8 +118,8 @@ final class Scanner {
                 started: proc.started,
                 project: label == nil ? project(for: cwd) : nil,
                 origin: label.map { $0.hasPrefix("homebrew.mxcl.") ? "brew services" : "launchd" }
-                    ?? (owned ? origin(above: chain.last!, procs: procs) : "root"),
-                tree: owned ? rootTree.sorted() : [pid],
+                    ?? (owned ? origin(of: chain.last!.ppid, procs: procs) : "root"),
+                tree: owned ? rootTree.subtracting(protected).sorted() : [pid],
                 launchdLabel: label,
                 isSystem: !owned || Self.isSystemExecutable(exe),
                 isOwned: owned
@@ -135,24 +154,29 @@ final class Scanner {
         return result
     }
 
-    private static func listeningPorts(_ pid: Int32) -> [ListenPort] {
-        let bytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
-        guard bytes > 0 else { return [] }
+    /// One PROC_PIDLISTFDS call into a reused buffer (this runs for every process
+    /// we own, every scan), growing it only when a process fills it.
+    private func listeningPorts(_ pid: Int32) -> [ListenPort] {
         let stride = MemoryLayout<proc_fdinfo>.stride
-        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: Int(bytes) / stride)
-        let filled = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fds, bytes)
-        guard filled > 0 else { return [] }
+        var filled: Int32 = 0
+        while true {
+            let capacity = Int32(fdBuffer.count * stride)
+            filled = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fdBuffer, capacity)
+            guard filled > 0 else { return [] }
+            if filled < capacity { break }
+            fdBuffer = [proc_fdinfo](repeating: proc_fdinfo(), count: fdBuffer.count * 2)
+        }
 
         var ports: [Int: Bool] = [:] // port → exposed (merges IPv4 + IPv6 sockets)
         let infoSize = Int32(MemoryLayout<socket_fdinfo>.size)
-        for fd in fds.prefix(Int(filled) / stride) where fd.proc_fdtype == PROX_FDTYPE_SOCKET {
+        for fd in fdBuffer.prefix(Int(filled) / stride) where fd.proc_fdtype == PROX_FDTYPE_SOCKET {
             var info = socket_fdinfo()
             guard proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDSOCKETINFO, &info, infoSize) == infoSize,
                   info.psi.soi_kind == SOCKINFO_TCP else { continue }
             let tcp = info.psi.soi_proto.pri_tcp
             guard tcp.tcpsi_state == TSI_S_LISTEN else { continue }
             let port = Int(UInt16(bigEndian: UInt16(truncatingIfNeeded: tcp.tcpsi_ini.insi_lport)))
-            ports[port, default: false] = ports[port, default: false] || isWildcard(tcp.tcpsi_ini)
+            ports[port, default: false] = ports[port, default: false] || Self.isWildcard(tcp.tcpsi_ini)
         }
         return ports.map { ListenPort(number: $0.key, exposed: $0.value) }
     }
@@ -171,8 +195,10 @@ final class Scanner {
         var result: [Int32: [Int: Bool]] = [:]
         for line in Shell.run("/usr/sbin/netstat", ["-anv", "-p", "tcp"]).split(separator: "\n") {
             let cols = line.split(separator: " ")
+            // "process:pid" starts at column 10, but the name may contain spaces
+            // ("Code Helper:123"), so find the first later column with a ":pid" suffix.
             guard cols.count > 10, cols[5] == "LISTEN",
-                  let pidText = cols[10].split(separator: ":").last, let pid = Int32(pidText),
+                  let pid = cols[10...].lazy.compactMap(Self.pidSuffix).first,
                   let dot = cols[3].lastIndex(of: "."), let port = Int(cols[3][cols[3].index(after: dot)...])
             else { continue }
             let host = cols[3][..<dot]
@@ -180,6 +206,11 @@ final class Scanner {
             result[pid, default: [:]][port] = (result[pid]?[port] ?? false) || exposed
         }
         return result.mapValues { $0.map { ListenPort(number: $0.key, exposed: $0.value) } }
+    }
+
+    /// "node:4242" → 4242
+    private static func pidSuffix(_ column: Substring) -> Int32? {
+        column.lastIndex(of: ":").flatMap { Int32(column[column.index(after: $0)...]) }
     }
 
     private static func launchdLabels() -> [Int32: String] {
@@ -200,7 +231,7 @@ final class Scanner {
 
     /// Full argv via KERN_PROCARGS2, falling back to the short kernel name.
     private func commandLine(_ proc: Proc) -> String {
-        if let memo = argsMemo[proc.pid] { return memo }
+        if let hit = memo.args[proc.pid] { return hit }
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, proc.pid]
         var size = argsBuffer.count
         var result = proc.comm
@@ -218,15 +249,16 @@ final class Scanner {
             }
             if !args.isEmpty { result = args.joined(separator: " ") }
         }
-        argsMemo[proc.pid] = result
+        memo.args[proc.pid] = result
         return result
     }
 
     private func executablePath(_ pid: Int32) -> String {
-        if let memo = exeMemo[pid] { return memo }
-        var buf = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
-        let path = proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 ? String(cString: buf) : ""
-        exeMemo[pid] = path
+        if let hit = memo.exe[pid] { return hit }
+        var buf = [UInt8](repeating: 0, count: 4 * Int(MAXPATHLEN)) // PROC_PIDPATHINFO_MAXSIZE
+        let length = Int(proc_pidpath(pid, &buf, UInt32(buf.count)))
+        let path = length > 0 ? String(decoding: buf[..<length], as: UTF8.self) : ""
+        memo.exe[pid] = path
         return path
     }
 
@@ -248,46 +280,50 @@ final class Scanner {
     ]
 
     private static func tokens(_ command: String) -> [String] {
-        command.split(separator: " ").prefix(2).map {
-            (($0 as NSString).lastPathComponent as String).trimmingCharacters(in: ["-"]).lowercased()
+        command.split(separator: " ", maxSplits: 2).prefix(2).map {
+            $0.basename.trimmingCharacters(in: ["-"]).lowercased()
         }
     }
 
     private static func isShellWrapper(_ command: String) -> Bool {
-        let t = command.split(separator: " ")
-        guard let first = t.first else { return false }
-        let name = ((first as NSString).lastPathComponent as String).trimmingCharacters(in: ["-"])
-        return shells.contains(name) && t.contains("-c")
+        guard let first = command.split(separator: " ", maxSplits: 1).first,
+              shells.contains(first.basename.trimmingCharacters(in: ["-"])) else { return false }
+        return command.split(separator: " ").contains("-c")
     }
 
     private static func agentName(_ command: String, exe: String) -> String? {
         guard !isInstalledApp(exe) else { return nil } // Claude.app itself isn't an agent
         if exe.contains("/claude/versions/") { return "Claude Code" }
-        if let agent = agents[((exe as NSString).lastPathComponent as String).lowercased()] { return agent }
+        if let agent = agents[exe.basename.lowercased()] { return agent }
         return tokens(command).lazy.compactMap { agents[$0] }.first
     }
 
     /// Where climbing must stop: interactive shells, terminals/IDEs, agents, launchd.
     private func isBoundary(_ proc: Proc) -> Bool {
+        if let hit = memo.boundary[proc.pid] { return hit }
         let command = commandLine(proc), exe = executablePath(proc.pid)
-        if Self.agentName(command, exe: exe) != nil || exe.contains(".app/") || Self.isSystemExecutable(exe) { return true }
-        guard let first = Self.tokens(command).first else { return true }
-        if Self.shells.contains(first) { return !Self.isShellWrapper(command) }
-        return ["login", "tmux", "screen", "sshd", "zellij"].contains(first)
+        let result: Bool
+        if Self.agentName(command, exe: exe) != nil || Self.appName(exe) != nil || Self.isSystemExecutable(exe) {
+            result = true
+        } else if let first = Self.tokens(command).first {
+            result = Self.shells.contains(first) ? !Self.isShellWrapper(command)
+                : ["login", "tmux", "screen", "sshd", "zellij"].contains(first)
+        } else {
+            result = true
+        }
+        memo.boundary[proc.pid] = result
+        return result
     }
 
-    private func origin(above root: Proc, procs: [Int32: Proc]) -> String? {
-        var current = procs[root.ppid]
-        while let p = current, p.pid > 1 {
-            let exe = executablePath(p.pid)
-            if let agent = Self.agentName(commandLine(p), exe: exe) { return agent }
-            if let app = exe.components(separatedBy: "/").first(where: { $0.hasSuffix(".app") }) {
-                return String(app.dropLast(4))
-            }
-            if let first = Self.tokens(commandLine(p)).first, ["tmux", "screen", "zellij"].contains(first) { return first }
-            current = procs[p.ppid]
-        }
-        return nil
+    /// The nearest agent, app or multiplexer at or above `pid`.
+    private func origin(of pid: Int32, procs: [Int32: Proc]) -> String? {
+        guard pid > 1, let p = procs[pid] else { return nil }
+        if let hit = memo.origin[pid] { return hit }
+        let command = commandLine(p), exe = executablePath(pid)
+        let mux = Self.tokens(command).first.flatMap { ["tmux", "screen", "zellij"].contains($0) ? $0 : nil }
+        let result = Self.agentName(command, exe: exe) ?? Self.appName(exe) ?? mux ?? origin(of: p.ppid, procs: procs)
+        memo.origin.updateValue(result, forKey: pid) // updateValue: a nil result must be stored, not removed
+        return result
     }
 
     /// GUI apps that are really dev infrastructure (Docker's backend is what
@@ -300,11 +336,20 @@ final class Scanner {
 
     static func isSystemExecutable(_ exe: String) -> Bool {
         if exe.isEmpty { return true }
-        if devApps.contains(where: exe.contains) { return false }
         if ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/", "/Library/Apple/"].contains(where: exe.hasPrefix) {
             return true
         }
-        return isInstalledApp(exe)
+        return isInstalledApp(exe) && !devApps.contains(where: exe.contains)
+    }
+
+    /// The app bundle an executable runs from ("Ghostty", "Cursor"), ignoring
+    /// bundles inside frameworks, like the Python.app behind every Homebrew `python3`.
+    private static func appName(_ exe: String) -> String? {
+        for part in exe.split(separator: "/") {
+            if part.hasSuffix(".framework") { return nil }
+            if part.hasSuffix(".app") { return String(part.dropLast(4)) }
+        }
+        return nil
     }
 
     /// Installed GUI apps (Spotify, Cursor…) — but not bundles nested elsewhere,
@@ -320,7 +365,7 @@ final class Scanner {
     private func project(for cwd: String) -> Project? {
         let home = NSHomeDirectory()
         guard !cwd.isEmpty, cwd != "/", cwd != home else { return nil }
-        if let cached = projectCache[cwd] { return cached }
+        if let hit = memo.project[cwd] { return hit }
 
         let fm = FileManager.default
         var dir = URL(fileURLWithPath: cwd)
@@ -335,25 +380,31 @@ final class Scanner {
             dir.deleteLastPathComponent()
         }
         let result = found ?? Project(root: cwd, name: (cwd as NSString).lastPathComponent, branch: nil, isWorktree: false)
-        projectCache[cwd] = result
+        memo.project[cwd] = result
         return result
     }
 
     private static func gitProject(root: URL, git: URL, isDirectory: Bool) -> Project {
         var gitDir = git
         var name = root.lastPathComponent
-        if !isDirectory, // worktree: .git is a file pointing at <repo>/.git/worktrees/<name>
-           let contents = try? String(contentsOf: git, encoding: .utf8),
-           let path = contents.split(separator: " ").last?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        var isWorktree = false
+        // A .git file ("gitdir: <path>") is a worktree (<repo>/.git/worktrees/<name>)
+        // or a submodule (<repo>/.git/modules/<name>), which keeps its own name.
+        if !isDirectory, let contents = try? String(contentsOf: git, encoding: .utf8),
+           contents.hasPrefix("gitdir:") {
+            let path = contents.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespacesAndNewlines)
             gitDir = URL(fileURLWithPath: path, relativeTo: root)
             let parts = gitDir.standardized.pathComponents
-            if let i = parts.lastIndex(of: ".git"), i > 0 { name = parts[i - 1] }
+            if let i = parts.lastIndex(of: ".git"), i > 0, parts.indices.contains(i + 1), parts[i + 1] == "worktrees" {
+                name = parts[i - 1]
+                isWorktree = true
+            }
         }
         let head = (try? String(contentsOf: gitDir.appendingPathComponent("HEAD"), encoding: .utf8)) ?? ""
         let branch = head.hasPrefix("ref: refs/heads/")
             ? String(head.dropFirst("ref: refs/heads/".count)).trimmingCharacters(in: .whitespacesAndNewlines)
             : String(head.prefix(7))
-        return Project(root: root.path, name: name, branch: branch.isEmpty ? nil : branch, isWorktree: !isDirectory)
+        return Project(root: root.path, name: name, branch: branch.isEmpty ? nil : branch, isWorktree: isWorktree)
     }
 }
 
