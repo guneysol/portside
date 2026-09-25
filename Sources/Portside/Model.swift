@@ -2,15 +2,6 @@ import Foundation
 
 enum Kind {
     case web, database, service, runtime
-
-    var symbol: String {
-        switch self {
-        case .web: "globe"
-        case .database: "cylinder.split.1x2"
-        case .service: "shippingbox"
-        case .runtime: "terminal"
-        }
-    }
 }
 
 struct ListenPort: Hashable, Comparable {
@@ -51,6 +42,12 @@ struct DevProcess: Identifiable, Hashable {
     let isSystem: Bool
     /// Owned by another user (root…): visible, but we can't stop it.
     let isOwned: Bool
+
+    /// Working directory relative to the project root ("apps/web"), nil at the root itself.
+    var subpath: String? {
+        guard let root = project?.root, cwd.hasPrefix(root + "/") else { return nil }
+        return String(cwd.dropFirst(root.count + 1))
+    }
 }
 
 struct ProcessGroup: Identifiable {

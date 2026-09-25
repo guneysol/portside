@@ -14,8 +14,9 @@ listening on your machine, grouped by project and git worktree, with one-click s
 - **Shows who started it**: Claude Code, Codex, Cursor, your terminal or `brew services`.
 - **Stops it properly.** It takes down the whole `npm → sh → node` chain without touching
   sibling servers, and stops brew services through `brew services stop` so they don't respawn.
-- Click a port to open it in the browser. Right-click a row for Reveal in Finder, Copy Command
-  and Force Quit.
+- Click a port to open it in the browser, or to copy the address for databases and services.
+  Ports reachable from your network are marked. Right-click a row for Reveal in Finder,
+  Copy Command and Force Quit.
 
 ## Install
 

@@ -10,8 +10,9 @@ struct PortsideApp: App {
         MenuBarExtra {
             MenuContent(store: store)
         } label: {
+            // One steady glyph; the count appears only when something is running.
             let count = store.visible.count
-            Image(systemName: count > 0 ? "server.rack" : "moon.zzz")
+            Image(systemName: "server.rack")
             if count > 0 { Text("\(count)") }
         }
         .menuBarExtraStyle(.window)
@@ -27,17 +28,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }
         Task { @MainActor in
-            await Snapshot.write(to: args[i + 1], dark: args.contains("--dark"), demo: args.contains("--demo"))
+            if let h = args.firstIndex(of: "--hover"), h + 1 < args.count { Snapshot.debugHoverPID = Int32(args[h + 1]) }
+            Snapshot.debugConfirm = args.contains("--confirm")
+            let rows = args.contains("--demo-empty") ? Demo.emptyRows : args.contains("--demo") ? Demo.rows : nil
+            await Snapshot.write(to: args[i + 1], dark: args.contains("--dark"), demo: rows)
         }
     }
 }
 
-/// `Portside --snapshot out.png [--dark] [--demo]` renders the popover, then quits.
-/// `--demo` uses made-up rows, so screenshots never leak real projects.
+/// `Portside --snapshot out.png [--dark] [--demo | --demo-empty] [--hover <pid>] [--confirm]`
+/// renders the popover, then quits. `--demo` uses made-up rows, so screenshots never leak real projects.
 enum Snapshot {
+    // Debug only: snapshots can't hover or click, so these force those states.
+    @MainActor static var debugHoverPID: Int32?
+    @MainActor static var debugConfirm = false
+
     @MainActor
-    static func write(to path: String, dark: Bool, demo: Bool) async {
-        if demo { Store.shared.showDemo(Demo.rows) } else { await Store.shared.refresh() }
+    static func write(to path: String, dark: Bool, demo: [DevProcess]?) async {
+        if let demo { Store.shared.showDemo(demo) } else { await Store.shared.refresh() }
         let host = NSHostingView(rootView: MenuContent(store: .shared).background(.windowBackground))
         host.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         host.frame.size = host.fittingSize
@@ -85,22 +93,34 @@ enum Debug {
 enum Demo {
     static let rows: [DevProcess] = {
         let web = Project(root: "/demo/acme-web", name: "acme-web", branch: "main", isWorktree: false)
-        let checkout = Project(root: "/demo/acme-web-checkout", name: "acme-web", branch: "feat/checkout", isWorktree: true)
+        let checkout = Project(root: "/demo/acme-web-checkout", name: "acme-web",
+                               branch: "claude/checkout-redesign-stripe-elements", isWorktree: true)
         let api = Project(root: "/demo/acme-api", name: "acme-api", branch: "main", isWorktree: false)
-        func row(_ pid: Int32, _ name: String, _ kind: Kind, _ port: Int, _ summary: String, _ minutes: Double,
-                 _ project: Project?, _ origin: String) -> DevProcess {
-            DevProcess(pid: pid, name: name, kind: kind, command: summary, summary: summary, exePath: "", cwd: "",
-                       ports: [ListenPort(number: port, exposed: false)],
-                       started: Date().addingTimeInterval(-minutes * 60), project: project, origin: origin,
-                       tree: [pid], launchdLabel: nil, isSystem: false, isOwned: true)
-        }
         return [
-            row(101, "Next.js", .web, 3000, "pnpm dev", 42, web, "Ghostty"),
-            row(102, "Vite", .web, 6006, "pnpm storybook", 42, web, "Ghostty"),
-            row(103, "Next.js", .web, 3001, "pnpm dev", 7, checkout, "Claude Code"),
-            row(104, "Uvicorn", .web, 8000, "uvicorn app.main:app --reload", 95, api, "Cursor"),
-            row(105, "PostgreSQL", .database, 5432, "postgres -D /opt/homebrew/var/postgresql@17", 4320, nil, "brew services"),
-            row(106, "Redis", .database, 6379, "redis-server 127.0.0.1:6379", 4320, nil, "brew services"),
+            row(101, "Next.js", .web, [3000], "pnpm dev", 42, web, "/apps/web", "Ghostty"),
+            row(102, "Next.js", .web, [3002], "pnpm dev", 42, web, "/apps/docs", "Ghostty"),
+            row(103, "Next.js", .web, [3001], "pnpm dev", 7, checkout, "/apps/web", "Claude Code"),
+            row(104, "Uvicorn", .web, [8000], "uvicorn app.main:app --reload --host 0.0.0.0", 95, api, "", "Codex",
+                exposed: true),
+            row(105, "PostgreSQL", .database, [5432], "postgres -D /opt/homebrew/var/postgresql@17", 4320, nil, "",
+                "brew services"),
+            row(106, "Redis", .database, [6379], "redis-server 127.0.0.1:6379", 4320, nil, "", "brew services"),
+            row(107, "Mailpit", .service, [1025, 8025], "mailpit", 180, nil, "", "brew services"),
+            row(108, "nginx", .web, [80], "nginx: master process", 4400, nil, "", nil, owned: false),
+            row(109, "AirPlay Receiver", .service, [7000], "ControlCenter", 4400, nil, "", nil, system: true),
         ]
     }()
+
+    /// Nothing visible, one hidden system listener.
+    static let emptyRows = [row(109, "AirPlay Receiver", .service, [7000], "ControlCenter", 4400, nil, "", nil, system: true)]
+
+    private static func row(_ pid: Int32, _ name: String, _ kind: Kind, _ ports: [Int], _ summary: String,
+                            _ minutes: Double, _ project: Project?, _ subdir: String, _ origin: String?,
+                            exposed: Bool = false, owned: Bool = true, system: Bool = false) -> DevProcess {
+        DevProcess(pid: pid, name: name, kind: kind, command: summary, summary: summary, exePath: "",
+                   cwd: project.map { $0.root + subdir } ?? "",
+                   ports: ports.map { ListenPort(number: $0, exposed: exposed) },
+                   started: Date().addingTimeInterval(-minutes * 60), project: project, origin: origin,
+                   tree: [pid], launchdLabel: nil, isSystem: system, isOwned: owned)
+    }
 }
