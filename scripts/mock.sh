@@ -90,7 +90,7 @@ JSON
     start storybook    "$web"                   npm run storybook
     start checkout     "$ROOT/acme-web-checkout" "$BIN/claude" env PORT=3001 npm run dev
     start turbo        "$mono"                  npm run dev
-    start uvicorn      "$api"                   "$BIN/codex" .venv/bin/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    start uvicorn      "$api"                   "$BIN/codex" "$api/.venv/bin/uvicorn" app.main:app --reload --host 0.0.0.0 --port 8000
     start redis        /                        "$BIN/redis-server" --port 6379
     start postgres     /                        "$BIN/postgres" -D /opt/homebrew/var/postgresql@17 -p 5432
     start mailpit      /                        env MOCK_EXTRA_PORTS=1025 "$BIN/mailpit" --port 8025
