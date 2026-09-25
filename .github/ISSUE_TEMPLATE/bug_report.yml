@@ -1,0 +1,24 @@
+name: Bug report
+description: Something is missing, wrong, or didn't stop
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what Portside showed or did instead.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: The process involved
+      description: |
+        If a process is missing, mislabeled or wouldn't stop, paste its line from
+        `~/Applications/Portside.app/Contents/MacOS/Portside --list`.
+        This output includes project paths and branch names, so trim anything private.
+      render: text
+  - type: input
+    attributes:
+      label: macOS version
+      placeholder: "e.g. 15.5"
+    validations:
+      required: true

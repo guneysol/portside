@@ -1,0 +1,10 @@
+name: Feature or tool request
+description: Suggest an improvement, or a tool Portside should recognize by name
+labels: [enhancement]
+body:
+  - type: textarea
+    attributes:
+      label: What would you like?
+      description: For a tool name, include the command it runs (e.g. `node node_modules/.bin/foo dev`).
+    validations:
+      required: true
