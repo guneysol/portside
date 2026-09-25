@@ -32,7 +32,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-codesign --force --sign - "$APP" >/dev/null
+codesign --force --sign - "$APP" 2>/dev/null # quiet "replacing existing signature"; failures still exit via set -e
 echo "Built $APP"
 
 relaunch() {

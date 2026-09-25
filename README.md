@@ -26,7 +26,7 @@ See what's running, where it came from and which port it's on, then stop it.
 curl -fsSL https://raw.githubusercontent.com/guneysol/portside/main/install.sh | bash
 ```
 
-This builds from source in about 30 seconds and installs to `~/Applications`. Look for the icon in your
+This builds from source in under a minute and installs to `~/Applications`. Look for the icon in your
 menu bar, then turn on **Launch at Login** from the `⋯` menu.
 
 **Requires** macOS 14 or later, plus Apple's developer tools. If you don't have the tools, run
