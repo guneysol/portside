@@ -3,7 +3,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/guneysol/portside/main/install.sh | bash
 set -euo pipefail
 
-if ! command -v swift >/dev/null; then
+# /usr/bin/swift exists even without the tools (it is an installer stub), so ask xcode-select.
+if ! xcode-select -p >/dev/null 2>&1; then
     echo "Portside builds from source and needs Apple's developer tools."
     echo "Install them with:  xcode-select --install   — then run this again."
     exit 1

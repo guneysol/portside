@@ -53,7 +53,9 @@ JS
     tools() { mkdir -p "$1/node_modules/.bin"; for t in "${@:2}"; do ln -sf "$BIN/$t" "$1/node_modules/.bin/$t"; done; }
     repo() { git -C "$1" init -q -b main && git -C "$1" add -A &&
              git -C "$1" -c user.name=mock -c user.email=mock@example.com commit -qm init; }
-    start() { local log="$ROOT/logs/$1.log"; shift; (cd "$1" && shift && nohup "$@" >"$log" 2>&1 &); }
+    # Only nohup is backgrounded, so the subshell exits right away instead of
+    # lingering (and holding this script's stdout open) until the server dies.
+    start() { local log="$ROOT/logs/$1.log"; shift; (cd "$1" || exit; shift; nohup "$@" >"$log" 2>&1 </dev/null &); }
 
     # acme-web: Next.js + Storybook, plus a worktree on feat/checkout.
     local web="$ROOT/acme-web"
