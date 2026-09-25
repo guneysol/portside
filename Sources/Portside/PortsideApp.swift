@@ -26,7 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in await Debug.run(args) }
             return
         }
-        guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }
+        guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else {
+            // `Portside --demo`: the real, interactive app showing made-up rows, for screen recordings.
+            if args.contains("--demo") { Task { @MainActor in Store.shared.showDemo(Demo.rows) } }
+            return
+        }
         Task { @MainActor in
             if let h = args.firstIndex(of: "--hover"), h + 1 < args.count { Snapshot.debugHoverPID = Int32(args[h + 1]) }
             Snapshot.debugConfirm = args.contains("--confirm")
