@@ -91,6 +91,9 @@ private struct GroupSection: View {
 
             ForEach(group.processes) { ProcessRow(process: $0, store: store) }
         }
+        // Without this, the empty gap before "Stop all" isn't part of the hover
+        // area, so the button vanished while the pointer crossed it.
+        .contentShape(Rectangle())
         .onHover { hovering = $0 }
     }
 }
@@ -230,15 +233,40 @@ private struct StopButton: View {
 
 private struct Footer: View {
     @Bindable var store: Store
+    @State private var confirming = false
 
     var body: some View {
         HStack(spacing: 10) {
-            if store.hiddenCount > 0, !store.showSystem {
-                Text("\(store.hiddenCount) system & app listeners hidden")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+            let stoppable = store.visible.filter(\.isOwned)
+            if confirming {
+                Text("Stop all \(stoppable.count)?")
+                    .foregroundStyle(.primary)
+                Button("Cancel") { confirming = false }
+                    .buttonStyle(.plain)
+                Button("Stop") {
+                    store.stop(stoppable)
+                    confirming = false
+                }
+                .buttonStyle(.plain)
+                .fontWeight(.semibold)
+                .foregroundStyle(.red)
+            } else if !stoppable.isEmpty {
+                Button {
+                    confirming = true
+                    Task { try? await Task.sleep(for: .seconds(4)); confirming = false }
+                } label: {
+                    Label("Stop All", systemImage: "stop.circle")
+                }
+                .buttonStyle(.plain)
+                .help("Stop every process listed here")
             }
             Spacer()
+            if store.hiddenCount > 0, !store.showSystem {
+                Text("\(store.hiddenCount) hidden")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .help("System daemons and GUI apps — show them from the ⋯ menu")
+            }
             Button { Task { await store.refresh() } } label: {
                 Image(systemName: "arrow.clockwise")
             }
