@@ -89,6 +89,29 @@ private struct GroupSection: View {
     }
 }
 
+/// Tinted icon for what a process is, so rows can be scanned by kind at a glance.
+private struct KindTile: View {
+    let kind: Kind
+
+    private var tint: Color {
+        switch kind {
+        case .web: .blue
+        case .database: .orange
+        case .service: .purple
+        case .runtime: .gray
+        }
+    }
+
+    var body: some View {
+        Image(systemName: kind.symbol)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(tint)
+            .frame(width: 24, height: 24)
+            .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .accessibilityHidden(true)
+    }
+}
+
 private struct ProcessRow: View {
     let process: DevProcess
     let store: Store
@@ -99,6 +122,9 @@ private struct ProcessRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            KindTile(kind: process.kind)
+                .padding(.trailing, 2)
+
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(process.name)

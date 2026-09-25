@@ -2,6 +2,15 @@ import Foundation
 
 enum Kind {
     case web, database, service, runtime
+
+    var symbol: String {
+        switch self {
+        case .web: "globe"
+        case .database: "cylinder.split.1x2"
+        case .service: "shippingbox"
+        case .runtime: "terminal"
+        }
+    }
 }
 
 struct ListenPort: Hashable, Comparable {
