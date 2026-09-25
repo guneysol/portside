@@ -1,3 +1,5 @@
+<img src="Resources/AppIcon.png" width="96" alt="Portside icon">
+
 # Portside
 
 A tiny macOS menu bar app that shows every dev server and local service

@@ -10,8 +10,9 @@ swift build -c release
 
 APP=build/Portside.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp .build/release/Portside "$APP/Contents/MacOS/Portside"
+cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns" # regenerate: swift scripts/make-icon.swift
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -21,6 +22,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key><string>Portside</string>
     <key>CFBundleIdentifier</key><string>io.github.guneysol.portside</string>
     <key>CFBundleExecutable</key><string>Portside</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
