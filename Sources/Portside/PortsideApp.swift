@@ -26,25 +26,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in await Debug.run(args) }
             return
         }
-        guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else {
-            // `Portside --demo`: the real, interactive app showing made-up rows, for screen recordings.
-            if args.contains("--demo") { Task { @MainActor in Store.shared.showDemo(Demo.rows) } }
-            return
-        }
+        guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }
         Task { @MainActor in
             if let h = args.firstIndex(of: "--hover"), h + 1 < args.count { Snapshot.debugHoverPID = Int32(args[h + 1]) }
             Snapshot.debugConfirm = args.contains("--confirm")
-            var rows = args.contains("--demo-empty") ? Demo.emptyRows : args.contains("--demo") ? Demo.rows : nil
-            if let d = args.firstIndex(of: "--demo-drop"), d + 1 < args.count { // e.g. the state right after a Stop
-                let dropped = Set(args[d + 1].split(separator: ",").compactMap { Int32($0) })
-                rows = rows?.filter { !dropped.contains($0.pid) }
-            }
+            let rows = args.contains("--demo-empty") ? Demo.emptyRows : args.contains("--demo") ? Demo.rows : nil
             await Snapshot.write(to: args[i + 1], dark: args.contains("--dark"), demo: rows)
         }
     }
 }
 
-/// `Portside --snapshot out.png [--dark] [--demo | --demo-empty] [--demo-drop <pid,…>] [--hover <pid>] [--confirm]`
+/// `Portside --snapshot out.png [--dark] [--demo | --demo-empty] [--hover <pid>] [--confirm]`
 /// renders the popover, then quits. `--demo` uses made-up rows, so screenshots never leak real projects.
 enum Snapshot {
     // Debug only: snapshots can't hover or click, so these force those states.

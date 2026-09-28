@@ -118,15 +118,6 @@ final class Store {
         let targets = processes.filter { !stopping.contains($0.pid) }
         guard !targets.isEmpty else { return }
         stopping.formUnion(targets.map(\.pid))
-        if demoMode { // demo rows are made up: never signal anything, just play the stop
-            Task {
-                try? await Task.sleep(for: .milliseconds(450))
-                let gone = Set(targets.map(\.pid))
-                self.processes.removeAll { gone.contains($0.pid) }
-                stopping.subtract(gone)
-            }
-            return
-        }
         let scannedAt = scannedAt
         Task {
             await withTaskGroup(of: Void.self) { group in
