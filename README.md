@@ -29,6 +29,33 @@ curl -fsSL https://raw.githubusercontent.com/guneysol/portside/main/install.sh |
 This builds from source in under a minute and installs to `~/Applications`. Look for the icon in your
 menu bar, then turn on **Launch at Login** from the `⋯` menu.
 
+**What the installer does:**
+
+1. It checks for Apple's developer tools.
+2. It clones the latest release into a temporary folder, which it deletes afterwards.
+3. It builds Portside and copies it to `~/Applications`.
+
+It needs no sudo and touches nothing else. [Read the script](install.sh).
+
+<details>
+<summary><b>Prefer to look first?</b></summary>
+
+Download the script, read it, then run it:
+
+```bash
+curl -fsSLo install.sh https://raw.githubusercontent.com/guneysol/portside/main/install.sh
+less install.sh
+bash install.sh
+```
+
+Or skip the script and build it yourself:
+
+```bash
+git clone https://github.com/guneysol/portside && cd portside
+./build.sh --install
+```
+</details>
+
 **Requires** macOS 14 or later, plus Apple's developer tools. If you don't have the tools, run
 `xcode-select --install` and the installer will tell you. Because Portside is built on your
 machine, Gatekeeper doesn't block it.
