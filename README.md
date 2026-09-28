@@ -153,6 +153,17 @@ that, and the whole app is about 1,300 lines of Swift, easy to read before you r
 release is on the table if enough people want one.
 </details>
 
+## Alternatives
+
+Other people have built great takes on the same idea. Pick the one that fits:
+
+- [**WhatThePort**](https://whattheport.dev): memory and CPU per server, leak alerts, a clean-up mode
+  and a terminal UI. It has a direct download.
+- [**Port Menu**](https://www.portmenu.dev): minimal, with a signed download.
+
+Portside is the small one: no dependencies, no network and about 1,300 lines you can read in an
+afternoon.
+
 ## Update and uninstall
 
 To update, run the install command again. Follow [@guneysol](https://x.com/guneysol) to hear about
