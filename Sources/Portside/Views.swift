@@ -348,6 +348,10 @@ private struct Footer: View {
                 set: { store.setLaunchAtLogin($0) }
             ))
             Divider()
+            Button("Follow @guneysol for Updates") { open("https://x.com/guneysol") }
+            Button("Star on GitHub") { open("https://github.com/guneysol/portside") }
+            Button("Report a Bug…") { open("https://github.com/guneysol/portside/issues/new/choose") }
+            Divider()
             Button("Quit Portside") { NSApp.terminate(nil) }
                 .keyboardShortcut("q")
         } label: {
@@ -359,6 +363,10 @@ private struct Footer: View {
         .modifier(HoverChrome())
         .help("More")
         .accessibilityLabel("More")
+    }
+
+    private func open(_ link: String) {
+        if let url = URL(string: link) { NSWorkspace.shared.open(url) }
     }
 }
 

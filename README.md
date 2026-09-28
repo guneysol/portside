@@ -64,7 +64,7 @@ belongs to, **who started it** and **what port** it's on, and stops it cleanly.
 | **Hover a row** | Show the stop button |
 | **Right-click a row** | Open or copy each port, Reveal in Finder, Copy Path, Command or PID, Stop, Force Quit |
 | **Stop All** (footer) | Stop everything you own in the list, after one confirm (<kbd>Esc</kbd> cancels) |
-| **`⋯` menu** | Show System & App Listeners, Launch at Login, Refresh (<kbd>⌘</kbd><kbd>R</kbd>), Quit (<kbd>⌘</kbd><kbd>Q</kbd>) |
+| **`⋯` menu** | Show System & App Listeners, Launch at Login, Refresh (<kbd>⌘</kbd><kbd>R</kbd>), links for updates and bug reports, Quit (<kbd>⌘</kbd><kbd>Q</kbd>) |
 
 The menu bar icon shows how many things are running. A row marked with a lock belongs to another
 user, such as root. You can see it, but stopping it needs `sudo`.
@@ -128,7 +128,8 @@ release is on the table if enough people want one.
 
 ## Update and uninstall
 
-To update, run the install command again.
+To update, run the install command again. Follow [@guneysol](https://x.com/guneysol) to hear about
+new releases.
 
 To uninstall, turn off **Launch at Login** in the `⋯` menu, quit Portside, then:
 
@@ -145,3 +146,11 @@ development loop, a mock environment that starts realistic fake servers, and the
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<div align="center">
+
+Made by [@guneysol](https://x.com/guneysol). Follow for updates.
+
+</div>
