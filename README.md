@@ -26,14 +26,15 @@ See what's running, where it came from and which port it's on, then stop it.
 curl -fsSL https://raw.githubusercontent.com/guneysol/portside/main/install.sh | bash
 ```
 
-This builds from source in under a minute and installs to `~/Applications`. Look for the icon in your
+This builds from source in under a minute and installs to your Applications folder. Look for the icon in your
 menu bar, then turn on **Launch at Login** from the `⋯` menu.
 
 **What the installer does:**
 
 1. It checks for Apple's developer tools.
 2. It clones the latest release into a temporary folder, which it deletes afterwards.
-3. It builds Portside and copies it to `~/Applications`.
+3. It builds Portside and copies it to `/Applications`, or to `~/Applications` if your account
+   can't write to `/Applications` without sudo.
 
 It needs no sudo and touches nothing else. [Read the script](install.sh).
 
@@ -177,7 +178,7 @@ new releases.
 To uninstall, turn off **Launch at Login** in the `⋯` menu, quit Portside, then:
 
 ```bash
-rm -rf ~/Applications/Portside.app
+rm -rf /Applications/Portside.app ~/Applications/Portside.app
 defaults delete io.github.guneysol.portside 2>/dev/null
 ```
 

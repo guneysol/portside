@@ -2,7 +2,7 @@
 # Builds Portside.app into ./build.
 # Usage: ./build.sh [--open | --install]
 #   --open     launch the freshly built app
-#   --install  copy it to ~/Applications and launch it
+#   --install  copy it to /Applications (or ~/Applications if that isn't writable) and launch it
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -24,8 +24,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key><string>Portside</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.2.0</string>
-    <key>CFBundleVersion</key><string>4</string>
+    <key>CFBundleShortVersionString</key><string>0.2.1</string>
+    <key>CFBundleVersion</key><string>5</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
 </dict>
@@ -43,10 +43,24 @@ relaunch() {
 case "${1:-}" in
     --open) relaunch "$APP" ;;
     --install)
-        mkdir -p ~/Applications
-        rm -rf ~/Applications/Portside.app
-        cp -R "$APP" ~/Applications/
-        relaunch ~/Applications/Portside.app
-        echo "Installed ~/Applications/Portside.app - look for it in your menu bar."
+        # Where people look for apps. Admin accounts can write there without sudo;
+        # everyone else gets the Applications folder in their home.
+        if [[ -w /Applications ]]; then dest=/Applications; else dest=~/Applications; fi
+        # Only ever replace or remove our own Portside.app, never another app with the same name.
+        for dir in /Applications ~/Applications; do
+            old="$dir/Portside.app"
+            [[ -e "$old" ]] || continue
+            id=$(defaults read "$old/Contents/Info" CFBundleIdentifier 2>/dev/null || true)
+            if [[ "$id" != io.github.guneysol.portside ]]; then
+                [[ "$dir" == "$dest" ]] || continue
+                echo "$old belongs to another app ($id). Move it, then run this again."
+                exit 1
+            fi
+            rm -rf "$old" # also clears a copy left by an older install in the other folder
+        done
+        mkdir -p "$dest"
+        cp -R "$APP" "$dest/"
+        relaunch "$dest/Portside.app"
+        echo "Installed $dest/Portside.app. It's running in your menu bar now."
         ;;
 esac

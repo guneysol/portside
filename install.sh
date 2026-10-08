@@ -1,10 +1,11 @@
 #!/bin/bash
-# One-line install: builds the latest Portside release from source and puts it in ~/Applications.
+# One-line install: builds the latest Portside release from source and puts it in Applications.
 #   curl -fsSL https://raw.githubusercontent.com/guneysol/portside/main/install.sh | bash
 #
 # What this does: checks for Apple's developer tools, clones the latest release tag into a
-# temporary folder, builds it, and copies Portside.app to ~/Applications. No sudo, nothing else
-# on your Mac is touched, and the temporary folder is deleted afterwards.
+# temporary folder, builds it, and copies Portside.app to /Applications (or ~/Applications when
+# /Applications isn't writable without sudo). No sudo, nothing else on your Mac is touched,
+# and the temporary folder is deleted afterwards.
 #
 # Set PORTSIDE_REF=main (or any tag) to build something other than the latest release.
 set -euo pipefail
