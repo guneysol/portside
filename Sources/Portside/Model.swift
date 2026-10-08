@@ -38,7 +38,7 @@ struct DevProcess: Identifiable, Hashable {
     let summary: String
     let exePath: String
     let cwd: String
-    let ports: [ListenPort]
+    var ports: [ListenPort]
     /// A start date rather than an uptime, so unchanged scans compare equal
     /// and SwiftUI has nothing to redraw.
     let started: Date
@@ -51,6 +51,8 @@ struct DevProcess: Identifiable, Hashable {
     let isSystem: Bool
     /// Owned by another user (root…): visible, but we can't stop it.
     let isOwned: Bool
+    /// Set for a Docker container's row; Stop goes through the engine (`docker stop`).
+    var container: Container? = nil
 
     /// Docker Desktop, OrbStack… forward every container's ports through one process.
     /// Stopping it would take down every container (or the app), so it never is.

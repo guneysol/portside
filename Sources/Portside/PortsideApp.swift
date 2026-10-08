@@ -106,8 +106,8 @@ enum Demo {
             row(103, "Next.js", .web, [3001], "pnpm dev", 7, checkout, "/apps/web", "Claude Code"),
             row(104, "Uvicorn", .web, [8000], "uvicorn app.main:app --reload --host 0.0.0.0", 95, api, "", "Codex",
                 exposed: true),
-            row(105, "PostgreSQL", .database, [5432], "postgres -D /opt/homebrew/var/postgresql@17", 4320, nil, "",
-                "brew services"),
+            row(110, "PostgreSQL", .database, [5433], "db · postgres:16", 95, api, "", "docker compose",
+                container: "acme-api-db-1"),
             row(106, "Redis", .database, [6379], "redis-server 127.0.0.1:6379", 4320, nil, "", "brew services"),
             row(107, "Mailpit", .service, [1025, 8025], "mailpit", 180, nil, "", "brew services"),
             row(108, "nginx", .web, [80], "nginx: master process", 4400, nil, "", nil, owned: false),
@@ -120,11 +120,17 @@ enum Demo {
 
     private static func row(_ pid: Int32, _ name: String, _ kind: Kind, _ ports: [Int], _ summary: String,
                             _ minutes: Double, _ project: Project?, _ subdir: String, _ origin: String?,
-                            exposed: Bool = false, owned: Bool = true, system: Bool = false) -> DevProcess {
-        DevProcess(pid: pid, name: name, kind: kind, command: summary, summary: summary, exePath: "",
-                   cwd: project.map { $0.root + subdir } ?? "",
-                   ports: ports.map { ListenPort(number: $0, exposed: exposed) },
-                   started: Date().addingTimeInterval(-minutes * 60), project: project, origin: origin,
-                   tree: [pid], launchdLabel: nil, isSystem: system, isOwned: owned)
+                            exposed: Bool = false, owned: Bool = true, system: Bool = false,
+                            container: String? = nil) -> DevProcess {
+        var row = DevProcess(pid: pid, name: name, kind: kind, command: summary, summary: summary, exePath: "",
+                             cwd: project.map { $0.root + subdir } ?? "",
+                             ports: ports.map { ListenPort(number: $0, exposed: exposed) },
+                             started: Date().addingTimeInterval(-minutes * 60), project: project, origin: origin,
+                             tree: [pid], launchdLabel: nil, isSystem: system, isOwned: owned)
+        row.container = container.map {
+            Container(id: "", name: $0, image: "", command: summary, created: row.started, ports: row.ports,
+                      composeProject: nil, composeService: nil, composeDirectory: nil, socket: "")
+        }
+        return row
     }
 }

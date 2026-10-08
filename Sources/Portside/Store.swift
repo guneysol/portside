@@ -136,6 +136,16 @@ enum Terminator {
     /// existed at `scanned` are signalled, so a pid reused since then is left alone.
     static func stop(_ p: DevProcess, force: Bool, asOf scanned: Date) async {
         guard !p.isContainerEngine else { return }
+        if let container = p.container {
+            // The engine waits up to 10s for the container; keep that off Swift's cooperative pool.
+            await withCheckedContinuation { done in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    Docker.stop(container, force: force)
+                    done.resume()
+                }
+            }
+            return
+        }
         // brew services have KeepAlive — a plain kill just gets them restarted.
         if !force, let label = p.launchdLabel, label.hasPrefix("homebrew.mxcl."),
            let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].first(where: FileManager.default.isExecutableFile) {

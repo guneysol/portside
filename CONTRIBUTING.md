@@ -1,7 +1,7 @@
 # Contributing
 
 Thanks for helping! Portside is small on purpose: plain SwiftUI with Swift Package Manager, no
-dependencies, and about 1,300 lines.
+dependencies, and about 1,600 lines.
 
 ## Development loop
 
@@ -44,6 +44,7 @@ They include your project paths and branch names. `--demo` exists so you don't h
 | File | What it does |
 |---|---|
 | `Sources/Portside/Scanner.swift` | Reads processes and sockets from the kernel, walks the process tree to decide what Stop takes down, and detects projects and worktrees |
+| `Sources/Portside/Docker.swift` | Lists and stops containers through the engine's local socket |
 | `Sources/Portside/Classifier.swift` | Friendly names: **add a tool here** |
 | `Sources/Portside/Store.swift` | Polling, refresh and stopping |
 | `Sources/Portside/Views.swift` | The menu UI |

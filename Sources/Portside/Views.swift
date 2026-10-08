@@ -226,7 +226,11 @@ private struct ProcessRow: View {
             Button("Copy Path") { Actions.copy(process.cwd) }
         }
         Button("Copy Command") { Actions.copy(process.command) }
-        Button("Copy PID") { Actions.copy("\(process.pid)") }
+        if let container = process.container {
+            Button("Copy Container Name") { Actions.copy(container.name) }
+        } else {
+            Button("Copy PID") { Actions.copy("\(process.pid)") }
+        }
         if process.canStop {
             Divider()
             Button("Stop") { store.stop([process]) }
@@ -304,12 +308,21 @@ private struct Footer: View {
     @Bindable var store: Store
     @State private var confirming = Snapshot.debugConfirm
 
+    /// "Stop 3 processes and 2 containers?"
+    static func confirmation(_ rows: [DevProcess]) -> String {
+        let containers = rows.filter { $0.container != nil }.count, processes = rows.count - containers
+        let parts = [(processes, "process", "processes"), (containers, "container", "containers")]
+            .filter { $0.0 > 0 }
+            .map { "\($0.0) \($0.0 == 1 ? $0.1 : $0.2)" }
+        return "Stop \(parts.joined(separator: " and "))?"
+    }
+
     var body: some View {
         HStack(spacing: 2) {
             // Never system or app listeners (AirPlay, Spotify…) or Docker itself, even while they're shown.
             let stoppable = store.visible.filter { $0.canStop && !$0.isSystem }
             if confirming {
-                Text(stoppable.count == 1 ? "Stop 1 process?" : "Stop \(stoppable.count) processes?")
+                Text(Self.confirmation(stoppable))
                     .foregroundStyle(.primary)
                     .padding(.leading, 7)
                 Spacer()
@@ -329,7 +342,7 @@ private struct Footer: View {
                         Task { try? await Task.sleep(for: .seconds(4)); confirming = false }
                     }
                     .buttonStyle(FooterButtonStyle())
-                    .help("Stop every process you own in this list")
+                    .help("Stop every process and container you own in this list")
                 }
                 Spacer()
                 moreMenu

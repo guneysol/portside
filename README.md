@@ -78,6 +78,9 @@ belongs to, **who started it** and **what port** it's on, and stops it cleanly.
 - **Stops it cleanly.** Stop takes down the whole `npm → sh → node` chain, with no orphans left
   holding the port, and never touches servers running next to it. Brew services go through
   `brew services stop` so they don't come back.
+- **Sees inside Docker.** Each container gets its own row, named from its image. Compose
+  containers sit under their repo and branch, next to your other servers. Stop runs `docker stop` on
+  that container only. Works with Docker Desktop, OrbStack and Rancher Desktop.
 - **Flags exposed ports.** An orange mark shows a port that other devices on your network can reach.
 - **Stays light.** It reads process and socket data directly from macOS and never spawns
   `lsof` or `ps`. [Numbers below.](#performance)
@@ -118,9 +121,9 @@ change cause no redraw.
 
 Portside lists processes that **listen on a TCP port**. Things that never open one don't appear:
 file watchers (`tsc --watch`, `jest --watch`), queue workers, idle AI agent sessions, and services
-that only use unix sockets or UDP. Docker containers appear as one **Docker** row with every
-published port, not one row per container. That row has no Stop button, and Stop All skips it, so
-Portside never takes down Docker or your containers. Root-owned listeners only appear while the menu is
+that only use unix sockets or UDP. Docker containers only appear if they publish a port. Ports
+that Portside can't match to a container stay on a plain **Docker** row, which has no Stop button,
+so Portside never takes down Docker itself. Root-owned listeners only appear while the menu is
 open and **Show System & App Listeners** is on.
 </details>
 
@@ -128,7 +131,8 @@ open and **Show System & App Listeners** is on.
 <summary><b>Does it need permissions, sudo or network access?</b></summary>
 
 No. It asks for no accessibility or screen recording permission, never runs anything as root, and
-makes no network connections. It only signals processes you own.
+makes no network connections. It only signals processes you own. When Docker is running, it reads
+the container list from Docker's local socket on your Mac, the same one the `docker` command uses.
 </details>
 
 <details>
@@ -150,7 +154,7 @@ tool takes one line, and a PR is very welcome.
 <summary><b>Why is there no downloadable app or Homebrew cask?</b></summary>
 
 A downloaded app has to be notarized by Apple, or Gatekeeper blocks it. Building from source avoids
-that, and the whole app is about 1,300 lines of Swift, easy to read before you run it. A notarized
+that, and the whole app is about 1,600 lines of Swift, easy to read before you run it. A notarized
 release is on the table if enough people want one.
 </details>
 
@@ -162,7 +166,7 @@ Other people have built great takes on the same idea. Pick the one that fits:
   and a terminal UI. It has a direct download.
 - [**Port Menu**](https://www.portmenu.dev): minimal, with a signed download.
 
-Portside is the small one: no dependencies, no network and about 1,300 lines you can read in an
+Portside is the small one: no dependencies, no network and about 1,600 lines you can read in an
 afternoon.
 
 ## Update and uninstall

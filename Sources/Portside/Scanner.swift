@@ -34,6 +34,7 @@ final class Scanner: @unchecked Sendable {
         var project: [String: Project] = [:] // per scan, so branch switches show up
     }
     private var memo = Memo()
+    private var containerCache: [String: (ports: [Int], at: Date, containers: [Container])] = [:]
 
     /// - Parameter includeForeign: also report listeners owned by other users
     ///   (root daemons…). Costs one `netstat` spawn, so it only runs while the
@@ -83,7 +84,7 @@ final class Scanner: @unchecked Sendable {
             for p in daemons { labelCache[p.pid] = (p.started, labels[p.pid]) }
         }
 
-        return listening.compactMap { pid, ports -> DevProcess? in
+        let rows = listening.compactMap { pid, ports -> DevProcess? in
             guard let proc = procs[pid] else { return nil }
             let exe = executablePath(pid)
             let command = commandLine(proc)
@@ -125,6 +126,69 @@ final class Scanner: @unchecked Sendable {
                 isOwned: owned
             )
         }
+        return withContainers(rows)
+    }
+
+    // MARK: - Containers
+
+    /// Splits a container engine's row (Docker Desktop forwards every published port through
+    /// one process) into a row per container. Ports no container claims stay on the engine row.
+    private func withContainers(_ rows: [DevProcess]) -> [DevProcess] {
+        let engines = rows.filter(\.isContainerEngine)
+        containerCache = containerCache.filter { cached in engines.contains { $0.exePath == cached.key } }
+        guard !engines.isEmpty else { return rows }
+
+        var result = rows.filter { !$0.isContainerEngine }
+        for engine in engines {
+            var unclaimed = Set(engine.ports.map(\.number))
+            for container in containers(behind: engine) {
+                let ports = container.ports.filter { unclaimed.contains($0.number) }
+                guard !ports.isEmpty else { continue }
+                unclaimed.subtract(ports.map(\.number))
+                result.append(row(for: container, ports: ports, engine: engine))
+            }
+            if !unclaimed.isEmpty {
+                var rest = engine
+                rest.ports = engine.ports.filter { unclaimed.contains($0.number) }
+                result.append(rest)
+            }
+        }
+        return result
+    }
+
+    /// Asks the engine only when its ports change, or every 15s, never on every scan.
+    private func containers(behind engine: DevProcess) -> [Container] {
+        let ports = engine.ports.map(\.number)
+        if let cached = containerCache[engine.exePath], cached.ports == ports, cached.at.timeIntervalSinceNow > -15 {
+            return cached.containers
+        }
+        let containers = Docker.containers(forEngine: engine.exePath)
+        containerCache[engine.exePath] = (ports, Date(), containers)
+        return containers
+    }
+
+    private func row(for container: Container, ports: [ListenPort], engine: DevProcess) -> DevProcess {
+        let (name, kind) = Classifier.describe(image: container.image)
+        // Containers have no host pid; a stable negative id keeps them apart from processes.
+        let id = -1 - Int32(UInt32(container.id.prefix(7), radix: 16) ?? 0)
+        return DevProcess(
+            pid: id,
+            name: name,
+            kind: kind,
+            command: container.command,
+            summary: [container.composeService ?? container.name, container.image].joined(separator: " · "),
+            exePath: "",
+            cwd: container.composeDirectory ?? "",
+            ports: ports,
+            started: container.created,
+            project: container.composeDirectory.flatMap(project(for:)),
+            origin: container.composeProject == nil ? engine.name : "docker compose",
+            tree: [],
+            launchdLabel: nil,
+            isSystem: false,
+            isOwned: true,
+            container: container
+        )
     }
 
     // MARK: - Kernel sources

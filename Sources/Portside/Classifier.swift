@@ -46,6 +46,22 @@ enum Classifier {
         ("/Postgres.app/", "PostgreSQL"), ("/DBngin.app/", "DBngin"), ("/Redis.app/", "Redis"),
     ]
 
+    /// Official images are named after the tool, not its binary ("redis", not "redis-server").
+    private static let imageAliases = [
+        "redis": "redis-server", "valkey": "valkey-server", "mysql": "mysqld", "mariadb": "mariadbd",
+        "mongo": "mongod", "postgis": "postgres", "pgvector": "postgres", "timescaledb": "postgres",
+        "rabbitmq": "rabbitmq-server", "typesense": "typesense-server", "cockroachdb": "cockroach",
+        "influxdb": "influxd", "surrealdb": "surreal", "nats": "nats-server",
+    ]
+
+    /// "ghcr.io/acme/postgres:16@sha256:…" → PostgreSQL. Unknown images keep their own name.
+    static func describe(image: String) -> (String, Kind) {
+        let repo = image.split(separator: "@").first.map(String.init) ?? image
+        let last = repo.split(separator: "/").last.map(String.init) ?? repo
+        let base = (last.split(separator: ":").first.map(String.init) ?? last).lowercased()
+        return byToken[imageAliases[base] ?? base] ?? (base, .service)
+    }
+
     static func describe(command: String, exePath: String) -> (String, Kind) {
         if let (_, name) = appServices.first(where: { exePath.contains($0.0) }) {
             return (name, name == "PostgreSQL" || name == "Redis" ? .database : .service)
