@@ -102,9 +102,9 @@ Measured on an Apple Silicon Mac:
 
 | | |
 |---|---|
-| One scan | ~1.5 ms |
-| Idle CPU | ~0.06% of one core |
-| Memory | ~17 MB (≈35 MB after the menu has been opened) |
+| One scan | ~1 ms |
+| Idle CPU | ~0.1% of one core |
+| Memory | ~20–30 MB |
 | Network | None. Nothing leaves your Mac |
 
 It scans every 2 seconds while the menu is open. While it's closed, it scans every 10 seconds,

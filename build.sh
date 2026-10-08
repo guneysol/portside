@@ -24,8 +24,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key><string>Portside</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>0.1.1</string>
+    <key>CFBundleVersion</key><string>2</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
 </dict>
@@ -36,7 +36,7 @@ codesign --force --sign - "$APP" 2>/dev/null # quiet "replacing existing signatu
 echo "Built $APP"
 
 relaunch() {
-    pkill -x Portside 2>/dev/null && sleep 1 || true
+    pkill -f 'Portside\.app/Contents/MacOS/Portside' 2>/dev/null && sleep 1 || true # this app only
     open "$1"
 }
 

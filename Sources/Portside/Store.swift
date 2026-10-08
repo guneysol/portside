@@ -95,11 +95,13 @@ final class Store {
         if let inFlight { return await inFlight.value }
         let scanner = scanner, includeForeign = isOpen || showSystem
         let task = Task {
+            // Taken before the scan reads the process table, so a pid reused mid-scan is never "ours".
+            let started = Date()
             let fresh = await Task.detached(priority: .utility) {
                 scanner.scan(includeForeign: includeForeign).sorted { $0.pid < $1.pid }
             }.value
             if !demoMode {
-                scannedAt = Date()
+                scannedAt = started
                 if fresh != processes { processes = fresh } // no-op scans don't touch SwiftUI
             }
             inFlight = nil
@@ -137,6 +139,7 @@ enum Terminator {
         if !force, let label = p.launchdLabel, label.hasPrefix("homebrew.mxcl."),
            let brew = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"].first(where: FileManager.default.isExecutableFile) {
             let name = String(label.dropFirst("homebrew.mxcl.".count))
+            guard !name.isEmpty, !name.hasPrefix("-") else { return } // a label, never a flag like --all
             // brew can take seconds; keep it off Swift's small cooperative pool.
             await withCheckedContinuation { done in
                 DispatchQueue.global(qos: .userInitiated).async {

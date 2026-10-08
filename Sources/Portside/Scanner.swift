@@ -195,10 +195,11 @@ final class Scanner: @unchecked Sendable {
         var result: [Int32: [Int: Bool]] = [:]
         for line in Shell.run("/usr/sbin/netstat", ["-anv", "-p", "tcp"]).split(separator: "\n") {
             let cols = line.split(separator: " ")
-            // "process:pid" starts at column 10, but the name may contain spaces
-            // ("Code Helper:123"), so find the first later column with a ":pid" suffix.
+            // "process:pid" starts at column 10, but the name may contain spaces or colons
+            // ("Code Helper:123", "a:1 b:2"), so take the last column with a ":pid" suffix;
+            // the columns after it are hex flags.
             guard cols.count > 10, cols[5] == "LISTEN",
-                  let pid = cols[10...].lazy.compactMap(Self.pidSuffix).first,
+                  let pid = cols[10...].reversed().lazy.compactMap(Self.pidSuffix).first,
                   let dot = cols[3].lastIndex(of: "."), let port = Int(cols[3][cols[3].index(after: dot)...])
             else { continue }
             let host = cols[3][..<dot]
@@ -273,7 +274,15 @@ final class Scanner: @unchecked Sendable {
 
     // MARK: - Process tree rules
 
-    private static let shells: Set<String> = ["sh", "bash", "zsh", "fish", "dash"]
+    private static let shells: Set<String> = [
+        "sh", "bash", "zsh", "fish", "dash", "ksh", "mksh", "oksh", "tcsh", "csh", "nu", "pwsh", "elvish", "yash",
+    ]
+    /// Long-lived interactive programs a server can be started from (`:!npm run dev` in vim).
+    /// Stop never climbs into them: they hold the user's session or unsaved work.
+    private static let interactive: Set<String> = [
+        "login", "sshd", "mosh-server", "tmux", "screen", "zellij", "dtach", "abduco",
+        "vi", "vim", "nvim", "view", "hx", "helix", "kak", "micro", "nano", "emacs", "emacsclient", "xonsh",
+    ]
     private static let agents: [String: String] = [
         "claude": "Claude Code", "codex": "Codex", "gemini": "Gemini CLI",
         "opencode": "opencode", "aider": "Aider", "amp": "Amp", "cursor-agent": "Cursor Agent",
@@ -305,9 +314,10 @@ final class Scanner: @unchecked Sendable {
         let result: Bool
         if Self.agentName(command, exe: exe) != nil || Self.appName(exe) != nil || Self.isSystemExecutable(exe) {
             result = true
-        } else if let first = Self.tokens(command).first {
+        } else if case let names = Self.tokens(command), let first = names.first {
+            // Both tokens, so `python3 xonsh` and versioned names like `emacs-30.1` count too.
             result = Self.shells.contains(first) ? !Self.isShellWrapper(command)
-                : ["login", "tmux", "screen", "sshd", "zellij"].contains(first)
+                : names.contains { Self.interactive.contains($0) || $0.hasPrefix("emacs") }
         } else {
             result = true
         }
@@ -390,7 +400,7 @@ final class Scanner: @unchecked Sendable {
         var isWorktree = false
         // A .git file ("gitdir: <path>") is a worktree (<repo>/.git/worktrees/<name>)
         // or a submodule (<repo>/.git/modules/<name>), which keeps its own name.
-        if !isDirectory, let contents = try? String(contentsOf: git, encoding: .utf8),
+        if !isDirectory, let contents = readSmallFile(git.path),
            contents.hasPrefix("gitdir:") {
             let path = contents.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespacesAndNewlines)
             gitDir = URL(fileURLWithPath: path, relativeTo: root)
@@ -400,11 +410,24 @@ final class Scanner: @unchecked Sendable {
                 isWorktree = true
             }
         }
-        let head = (try? String(contentsOf: gitDir.appendingPathComponent("HEAD"), encoding: .utf8)) ?? ""
+        let head = readSmallFile(gitDir.appendingPathComponent("HEAD").path) ?? ""
         let branch = head.hasPrefix("ref: refs/heads/")
             ? String(head.dropFirst("ref: refs/heads/".count)).trimmingCharacters(in: .whitespacesAndNewlines)
             : String(head.prefix(7))
         return Project(root: root.path, name: name, branch: branch.isEmpty ? nil : branch, isWorktree: isWorktree)
+    }
+
+    /// The first 4 KB of a regular file. A FIFO, device or symlink in a project folder
+    /// (`.git` → /dev/zero) must never hang or flood the scan.
+    private static func readSmallFile(_ path: String) -> String? {
+        let fd = open(path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var info = stat()
+        guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else { return nil }
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        let count = read(fd, &buffer, buffer.count)
+        return count > 0 ? String(decoding: buffer[..<count], as: UTF8.self) : nil
     }
 }
 

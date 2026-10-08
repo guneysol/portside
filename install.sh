@@ -30,7 +30,7 @@ main() {
 
     dir=$(mktemp -d)
     trap 'rm -rf "$dir"' EXIT
-    git clone --quiet --depth 1 --branch "$ref" "$repo" "$dir" 2>/dev/null
+    git clone --quiet --depth 1 --branch "$ref" "$repo" "$dir"
     "$dir/build.sh" --install
 }
 
