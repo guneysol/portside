@@ -166,7 +166,7 @@ private struct ProcessRow: View {
         .contextMenu { menu }
         .accessibilityElement(children: .contain)
         .accessibilityActions {
-            if process.isOwned {
+            if process.canStop {
                 Button("Stop") { store.stop([process]) }
                 Button("Force Quit") { store.stop([process], force: true) }
             }
@@ -192,8 +192,14 @@ private struct ProcessRow: View {
     @ViewBuilder private var trailing: some View {
         if stopping {
             ProgressView().controlSize(.mini)
-        } else if process.isOwned {
+        } else if process.canStop {
             StopButton(name: process.name) { store.stop([process]) }
+        } else if process.isContainerEngine {
+            Image(systemName: "shippingbox")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .help("Container ports. Stop containers from \(process.name), so it keeps running")
+                .accessibilityLabel("Container ports")
         } else {
             Image(systemName: "lock.fill")
                 .font(.system(size: 10))
@@ -221,7 +227,7 @@ private struct ProcessRow: View {
         }
         Button("Copy Command") { Actions.copy(process.command) }
         Button("Copy PID") { Actions.copy("\(process.pid)") }
-        if process.isOwned {
+        if process.canStop {
             Divider()
             Button("Stop") { store.stop([process]) }
             Button("Force Quit") { store.stop([process], force: true) }
@@ -300,8 +306,8 @@ private struct Footer: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            // Never system or app listeners (AirPlay, Spotify…), even while they're shown.
-            let stoppable = store.visible.filter { $0.isOwned && !$0.isSystem }
+            // Never system or app listeners (AirPlay, Spotify…) or Docker itself, even while they're shown.
+            let stoppable = store.visible.filter { $0.canStop && !$0.isSystem }
             if confirming {
                 Text(stoppable.count == 1 ? "Stop 1 process?" : "Stop \(stoppable.count) processes?")
                     .foregroundStyle(.primary)

@@ -119,7 +119,8 @@ change cause no redraw.
 Portside lists processes that **listen on a TCP port**. Things that never open one don't appear:
 file watchers (`tsc --watch`, `jest --watch`), queue workers, idle AI agent sessions, and services
 that only use unix sockets or UDP. Docker containers appear as one **Docker** row with every
-published port, not one row per container. Root-owned listeners only appear while the menu is
+published port, not one row per container. That row has no Stop button, and Stop All skips it, so
+Portside never takes down Docker or your containers. Root-owned listeners only appear while the menu is
 open and **Show System & App Listeners** is on.
 </details>
 

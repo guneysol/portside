@@ -338,10 +338,10 @@ final class Scanner: @unchecked Sendable {
 
     /// GUI apps that are really dev infrastructure (Docker's backend is what
     /// listens on every published container port).
+    static let containerEngines = ["/Docker.app/", "/OrbStack.app/", "/Rancher Desktop.app/", "/Podman Desktop.app/"]
     static let devApps = [
         "/Xcode.app/Contents/Developer/", "/Postgres.app/", "/DBngin.app/", "/Redis.app/",
-        "/Docker.app/", "/OrbStack.app/", "/Rancher Desktop.app/", "/Podman Desktop.app/",
-    ]
+    ] + containerEngines
     private static let appFolders = ["/Applications/", "/System/Applications/", NSHomeDirectory() + "/Applications/"]
 
     static func isSystemExecutable(_ exe: String) -> Bool {

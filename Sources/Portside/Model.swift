@@ -52,6 +52,13 @@ struct DevProcess: Identifiable, Hashable {
     /// Owned by another user (root…): visible, but we can't stop it.
     let isOwned: Bool
 
+    /// Docker Desktop, OrbStack… forward every container's ports through one process.
+    /// Stopping it would take down every container (or the app), so it never is.
+    var isContainerEngine: Bool { Scanner.containerEngines.contains(where: exePath.contains) }
+
+    /// Has a Stop button. Stop All also skips system and app listeners.
+    var canStop: Bool { isOwned && !isContainerEngine }
+
     /// Working directory relative to the project root ("apps/web"), nil at the root itself.
     var subpath: String? {
         guard let root = project?.root, cwd.hasPrefix(root + "/") else { return nil }
