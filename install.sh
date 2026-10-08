@@ -17,7 +17,7 @@ main() {
     # /usr/bin/swift exists even without the tools (it is an installer stub), so ask xcode-select.
     if ! xcode-select -p >/dev/null 2>&1; then
         echo "Portside builds from source and needs Apple's developer tools."
-        echo "Install them with:  xcode-select --install   — then run this again."
+        echo "Install them with:  xcode-select --install   (then run this again)"
         exit 1
     fi
 
@@ -26,7 +26,7 @@ main() {
         ref=$(git ls-remote --tags --refs "$repo" 'v*' | sed 's#.*refs/tags/##' | sort -V | tail -1)
         [[ -n "$ref" ]] || { echo "Couldn't find a Portside release on GitHub."; exit 1; }
     fi
-    echo "Installing Portside $ref…"
+    echo "Installing Portside ${ref}..."
 
     dir=$(mktemp -d)
     trap 'rm -rf "$dir"' EXIT

@@ -47,6 +47,6 @@ case "${1:-}" in
         rm -rf ~/Applications/Portside.app
         cp -R "$APP" ~/Applications/
         relaunch ~/Applications/Portside.app
-        echo "Installed ~/Applications/Portside.app — look for it in your menu bar."
+        echo "Installed ~/Applications/Portside.app - look for it in your menu bar."
         ;;
 esac

@@ -7,3 +7,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: ./build.sh
+      # macOS's bash 3.2 reads a UTF-8 byte after "$var" as part of the name under
+      # set -u ("ref…" -> unbound variable), so the scripts users pipe into bash stay ASCII.
+      - name: Install scripts are ASCII-only
+        run: "! LC_ALL=C grep -n '[^[:print:][:space:]]' install.sh build.sh"
+      - name: Installer parses in a UTF-8 shell
+        run: LC_ALL=en_US.UTF-8 /bin/bash -n install.sh
