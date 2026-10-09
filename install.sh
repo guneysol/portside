@@ -33,6 +33,8 @@ main() {
     trap 'rm -rf "$dir"' EXIT
     git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$ref" "$repo" "$dir"
     "$dir/build.sh" --install
+    echo
+    echo "Like it? A star helps others find it: https://github.com/guneysol/portside"
 }
 
 main "$@"
