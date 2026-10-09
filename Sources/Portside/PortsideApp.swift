@@ -1,7 +1,19 @@
 import AppKit
 import SwiftUI
 
+/// Command-line flags run before any UI exists, so a status bar polling `--json`
+/// pays for a scan, not an app launch. Everything else starts the menu bar app.
 @main
+enum Entry {
+    @MainActor
+    static func main() {
+        let args = CommandLine.arguments
+        guard CLI.handles(args) else { return PortsideApp.main() }
+        Task { exit(await CLI.run(args)) }
+        dispatchMain()
+    }
+}
+
 struct PortsideApp: App {
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     private let store = Store.shared
@@ -22,10 +34,6 @@ struct PortsideApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let args = CommandLine.arguments
-        if args.contains("--list") || args.contains("--stop") || args.contains("--bench") {
-            Task { @MainActor in await Debug.run(args) }
-            return
-        }
         guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return }
         Task { @MainActor in
             if let h = args.firstIndex(of: "--hover"), h + 1 < args.count { Snapshot.debugHoverPID = Int32(args[h + 1]) }
@@ -62,14 +70,19 @@ enum Snapshot {
     }
 }
 
-/// `Portside --list` prints the scan; `Portside --stop <pid>` stops one like the UI does.
-enum Debug {
+/// `Portside --json [--all]` prints the scan for scripts and status bars; `--stop <pid> [--force]`
+/// stops one like Stop (or Force Quit) does. `--list` and `--bench` are for debugging.
+enum CLI {
+    static func handles(_ args: [String]) -> Bool {
+        ["--json", "--list", "--stop", "--bench"].contains(where: args.contains)
+    }
+
     @MainActor
-    static func run(_ args: [String]) async {
+    static func run(_ args: [String]) async -> Int32 {
+        // Off the main thread, like Store.refresh: there, Process.waitUntilExit (netstat)
+        // is ~30x slower and autoreleased objects are never drained.
+        let scanner = Scanner()
         if args.contains("--bench") {
-            // Off the main thread, like Store.refresh: there, Process.waitUntilExit (netstat)
-            // is ~30x slower and autoreleased objects are never drained.
-            let scanner = Scanner()
             for foreign in [false, true] {
                 let clock = ContinuousClock(), n = 50
                 _ = await Task.detached { scanner.scan(includeForeign: foreign) }.value // warm up
@@ -77,20 +90,93 @@ enum Debug {
                 for _ in 0..<n { _ = await Task.detached { scanner.scan(includeForeign: foreign) }.value }
                 print("scan(includeForeign: \(foreign)): \((clock.now - start) / n) per scan")
             }
-            exit(0)
+            return 0
         }
-        let procs = Scanner().scan(includeForeign: true), scanned = Date()
-        if let i = args.firstIndex(of: "--stop"), i + 1 < args.count, let pid = Int32(args[i + 1]),
-           let p = procs.first(where: { $0.pid == pid }) {
-            await Terminator.stop(p, force: false, asOf: scanned)
+        // Other users' listeners cost a netstat spawn and can't be stopped, so only --list and --all ask.
+        let foreign = args.contains("--list") || args.contains("--all")
+        let scanned = Date() // before the scan, as in Store.refresh: a pid reused mid-scan is never "ours"
+        let procs = await Task.detached { scanner.scan(includeForeign: foreign) }.value
+
+        if let i = args.firstIndex(of: "--stop") {
+            guard i + 1 < args.count, let pid = Int32(args[i + 1]),
+                  let p = procs.first(where: { $0.pid == pid }) else {
+                FileHandle.standardError.write(Data("no listener with that pid\n".utf8))
+                return 1
+            }
+            guard p.canStop else {
+                FileHandle.standardError.write(Data("\(pid) can't be stopped from here\n".utf8))
+                return 1
+            }
+            await Terminator.stop(p, force: args.contains("--force"), asOf: scanned)
             print("stopped \(pid) (tree \(p.tree.sorted()))")
+        } else if args.contains("--json") {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+            guard let data = try? encoder.encode(Output(processes: procs.sorted { $0.pid < $1.pid }.map(Row.init))) else {
+                return 1
+            }
+            FileHandle.standardOutput.write(data + Data("\n".utf8))
         } else {
             for p in procs.sorted(by: { $0.pid < $1.pid }) {
                 let project = p.project.map { "\($0.name)\($0.isWorktree ? " (worktree)" : "")@\($0.branch ?? "-")" } ?? "-"
                 print("\(p.pid)\t\(p.isOwned ? "" : "root ")\(p.isSystem ? "sys" : "dev")\t\(p.name)\t\(p.ports.map(\.number))\t\(project)\t\(p.summary)\t\(p.origin ?? "-")\ttree=\(p.tree)")
             }
         }
-        exit(0)
+        return 0
+    }
+
+    /// The `--json` format. Fields are only ever added, never renamed or removed;
+    /// optional ones are left out when empty.
+    private struct Output: Encodable {
+        let processes: [Row]
+    }
+
+    private struct Row: Encodable {
+        struct Port: Encodable {
+            let port: Int
+            let exposed: Bool
+        }
+        struct Repo: Encodable {
+            let name: String
+            let root: String
+            let branch: String?
+            let worktree: Bool
+        }
+        /// Negative for a Docker container, which has no host pid; `--stop` takes it all the same.
+        let pid: Int32
+        let name: String
+        let kind: String
+        let ports: [Port]
+        let summary: String
+        let command: String
+        let cwd: String?
+        let subpath: String?
+        /// Unix time in seconds.
+        let started: Int
+        let origin: String?
+        let project: Repo?
+        let container: String?
+        let system: Bool
+        let owned: Bool
+        let stoppable: Bool
+
+        init(_ p: DevProcess) {
+            pid = p.pid
+            name = p.name
+            kind = p.kind.rawValue
+            ports = p.ports.map { Port(port: $0.number, exposed: $0.exposed) }
+            summary = p.summary
+            command = p.command
+            cwd = p.cwd.isEmpty ? nil : p.cwd
+            subpath = p.subpath
+            started = Int(p.started.timeIntervalSince1970)
+            origin = p.origin
+            project = p.project.map { Repo(name: $0.name, root: $0.root, branch: $0.branch, worktree: $0.isWorktree) }
+            container = p.container?.name
+            system = p.isSystem
+            owned = p.isOwned
+            stoppable = p.canStop
+        }
     }
 }
 
