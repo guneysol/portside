@@ -100,6 +100,25 @@ belongs to, **who started it** and **what port** it's on, and stops it cleanly.
 The menu bar icon shows how many things are running. A row marked with a lock belongs to another
 user, such as root. You can see it, but stopping it needs `sudo`.
 
+## Scripting
+
+`Portside --json` prints what the menu lists, for status bars like
+[SketchyBar](https://github.com/FelixKratz/SketchyBar), Hammerspoon or your own scripts. It scans and
+exits in about 10 ms without starting the app, so Portside doesn't need to be running:
+
+```bash
+P=/Applications/Portside.app/Contents/MacOS/Portside   # or ~/Applications, see Install
+$P --json           # everything you own; --all adds other users' listeners
+$P --stop <pid>     # stop one exactly like the Stop button; --force is Force Quit
+```
+
+Each entry in `processes` has `pid`, `name`, `kind` (`web`, `database`, `service` or `runtime`),
+`ports` (`port`, `exposed`), `summary`, `command`, `started` (Unix time), `system`, `owned` and
+`stoppable`, plus `cwd`, `subpath`, `origin`, `container` and `project` (`name`, `root`, `branch`,
+`worktree`) when known. Entries with `system` set are the ones **Show System & App Listeners**
+reveals. A Docker container's `pid` is negative, and `--stop` takes it all the same. Fields are only
+ever added, never renamed or removed.
+
 ## Performance
 
 Measured on an Apple Silicon Mac:

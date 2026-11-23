@@ -1,6 +1,6 @@
 import Foundation
 
-enum Kind {
+enum Kind: String {
     case web, database, service, runtime
 
     var symbol: String {

@@ -31,12 +31,13 @@ apart from the real thing. Run `scripts/mock.sh down` to stop and remove it all.
 ```bash
 P=build/Portside.app/Contents/MacOS/Portside
 $P --list                                  # print what the scanner sees, including root-owned listeners
+$P --json                                  # the scripting output (see the README)
 $P --bench                                 # time a scan
-$P --stop <pid>                            # stop one process exactly as the UI does
+$P --stop <pid> [--force]                  # stop one process exactly as the UI does
 $P --snapshot out.png --demo [--dark]      # render the menu with fake data (use for screenshots)
 ```
 
-Never put real `--list` output or live screenshots in issues or PRs without checking them first.
+Never put real `--list` or `--json` output or live screenshots in issues or PRs without checking them first.
 They include your project paths and branch names. `--demo` exists so you don't have to.
 
 ## Where things live
@@ -48,7 +49,7 @@ They include your project paths and branch names. `--demo` exists so you don't h
 | `Sources/Portside/Classifier.swift` | Friendly names: **add a tool here** |
 | `Sources/Portside/Store.swift` | Polling, refresh and stopping |
 | `Sources/Portside/Views.swift` | The menu UI |
-| `Sources/Portside/PortsideApp.swift` | App entry point, debug flags, demo data |
+| `Sources/Portside/PortsideApp.swift` | App entry point, command-line flags (`--json`, debug), demo data |
 | `scripts/make-icon.swift` | Draws the app icon: `swift scripts/make-icon.swift` |
 
 ## Ground rules
