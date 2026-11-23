@@ -68,7 +68,7 @@ private struct GroupSection: View {
 
     private var header: some View {
         HStack(spacing: 5) {
-            Text(group.title).fontWeight(.semibold).layoutPriority(1)
+            Text(group.title).fontWeight(.semibold).lineLimit(1).layoutPriority(1)
             if let branch = group.project?.branch {
                 // Worktrees get a branch glyph: that is the one thing telling two checkouts of a repo apart.
                 if group.project?.isWorktree == true {
@@ -144,10 +144,8 @@ private struct ProcessRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityElement(children: .combine)
 
-            HStack(spacing: 4) {
-                ForEach(process.ports, id: \.number) { PortChip(port: $0, kind: process.kind) }
-            }
-            .fixedSize()
+            PortChips(ports: process.ports, kind: process.kind)
+                .fixedSize()
 
             // Only while it matters, so at rest the ports line up at the edge.
             if stopping || showsHover {
@@ -181,7 +179,7 @@ private struct ProcessRow: View {
             TimelineView(.periodic(from: process.started, by: 60)) { context in
                 let tail = [process.origin, Format.uptime(context.date.timeIntervalSince(process.started))]
                     .compactMap { $0 }.joined(separator: " · ")
-                Text(verbatim: " · " + tail).lineLimit(1).fixedSize()
+                Text(verbatim: " · " + tail).lineLimit(1)
             }
             .layoutPriority(1)
         }
@@ -236,6 +234,55 @@ private struct ProcessRow: View {
             Button("Stop") { store.stop([process]) }
             Button("Force Quit") { store.stop([process], force: true) }
         }
+    }
+}
+
+private struct PortChips: View {
+    let ports: [ListenPort]
+    let kind: Kind
+
+    private static let maxChips = 2
+
+    var body: some View {
+        let shown = ports.count > Self.maxChips ? Array(ports.prefix(Self.maxChips - 1)) : ports
+        let rest = ports.dropFirst(shown.count)
+        HStack(spacing: 4) {
+            ForEach(shown, id: \.number) { PortChip(port: $0, kind: kind) }
+            if !rest.isEmpty { MorePortsChip(ports: Array(rest), kind: kind) }
+        }
+    }
+}
+
+private struct MorePortsChip: View {
+    let ports: [ListenPort]
+    let kind: Kind
+    @State private var hovering = false
+
+    var body: some View {
+        Menu {
+            ForEach(ports, id: \.number) { port in
+                if kind == .web {
+                    Button(String("Open localhost:\(port.number)")) { Actions.open(port) }
+                } else {
+                    Button(String("Copy localhost:\(port.number)")) { Actions.copy("localhost:\(port.number)") }
+                }
+            }
+        } label: {
+            Text(verbatim: "+\(ports.count)")
+                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .frame(height: 20)
+                .background(Color.primary.opacity(hovering ? 0.18 : 0.06), in: Capsule())
+                .contentShape(Capsule())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .onHover { hovering = $0 }
+        .help(ports.map { ":\($0.number)" }.joined(separator: " "))
+        .accessibilityLabel("\(ports.count) more ports")
     }
 }
 

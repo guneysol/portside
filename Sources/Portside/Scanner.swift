@@ -88,6 +88,7 @@ final class Scanner: @unchecked Sendable {
             guard let proc = procs[pid] else { return nil }
             let exe = executablePath(pid)
             let command = commandLine(proc)
+            guard Self.agentName(command, exe: exe) == nil else { return nil }
             let owned = proc.uid == uid
 
             // Climb through wrappers (npm, sh -c, turbo…) so Stop takes the whole
